@@ -68,7 +68,8 @@
   let openResetId = null;
   let openScheduleId = null;
   let openEditId = null;
-  let view = "clients"; // "clients" | "schedule"
+  let openHistoryClientId = null;
+  let view = "clients"; // "clients" | "schedule" | "history"
   let syncing = false;
   let syncError = false;
 
@@ -171,18 +172,22 @@
   const overlay = document.getElementById('overlay');
   const addForm = document.getElementById('addForm');
 
-  document.getElementById('tabClients').addEventListener('click', () => {
-    view = 'clients';
-    document.getElementById('tabClients').classList.add('active');
-    document.getElementById('tabSchedule').classList.remove('active');
+  const historyView = document.getElementById('historyView');
+  const tabButtons = {
+    clients: document.getElementById('tabClients'),
+    schedule: document.getElementById('tabSchedule'),
+    history: document.getElementById('tabHistory'),
+  };
+  function setView(newView) {
+    view = newView;
+    Object.keys(tabButtons).forEach(key => {
+      tabButtons[key].classList.toggle('active', key === newView);
+    });
     render();
-  });
-  document.getElementById('tabSchedule').addEventListener('click', () => {
-    view = 'schedule';
-    document.getElementById('tabSchedule').classList.add('active');
-    document.getElementById('tabClients').classList.remove('active');
-    render();
-  });
+  }
+  tabButtons.clients.addEventListener('click', () => setView('clients'));
+  tabButtons.schedule.addEventListener('click', () => setView('schedule'));
+  tabButtons.history.addEventListener('click', () => setView('history'));
 
   function initials(name) {
     return name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
@@ -219,12 +224,24 @@
       grid.style.display = 'none';
       emptyState.style.display = 'none';
       scheduleView.style.display = 'block';
+      historyView.style.display = 'none';
       renderScheduleView();
+      return;
+    }
+
+    if (view === 'history') {
+      clientsToolbar.style.display = 'none';
+      grid.style.display = 'none';
+      emptyState.style.display = 'none';
+      scheduleView.style.display = 'none';
+      historyView.style.display = 'block';
+      renderHistoryView();
       return;
     }
 
     clientsToolbar.style.display = 'flex';
     scheduleView.style.display = 'none';
+    historyView.style.display = 'none';
 
     const filtered = clients.filter(c =>
       c.name.toLowerCase().includes(query.toLowerCase())
@@ -326,6 +343,74 @@
       btn.addEventListener('click', () => {
         appointments = appointments.filter(a => a.id !== btn.dataset.id);
         saveClients();
+        render();
+      });
+    });
+  }
+
+  function renderHistoryView() {
+    const completed = appointments.filter(a => a.completed);
+
+    if (completed.length === 0) {
+      historyView.innerHTML = `<div class="empty-state">No completed sessions yet. Mark a scheduled session "Done" to see it show up here.</div>`;
+      return;
+    }
+
+    // Group completed sessions by client, most-recent-first within each.
+    const byClient = {};
+    completed.forEach(a => {
+      if (!byClient[a.clientId]) byClient[a.clientId] = [];
+      byClient[a.clientId].push(a);
+    });
+
+    const summaryOrder = Object.keys(byClient)
+      .map(clientId => {
+        const c = clients.find(cl => cl.id === clientId);
+        const sessions = byClient[clientId].slice().sort((x, y) => new Date(y.datetime) - new Date(x.datetime));
+        return { clientId, name: c ? c.name : 'Unknown client', sessions };
+      })
+      .sort((a, b) => b.sessions.length - a.sessions.length);
+
+    const summaryHtml = `
+      <div class="appt-row" style="margin-bottom:18px;">
+        <div class="appt-info">
+          <div class="appt-client">Total completed sessions</div>
+        </div>
+        <div class="count-num" style="font-size:22px;">${completed.length}</div>
+      </div>
+    `;
+
+    const rowsHtml = summaryOrder.map(entry => {
+      const open = openHistoryClientId === entry.clientId;
+      const sessionListHtml = open ? `
+        <div style="padding: 4px 14px 12px;">
+          ${entry.sessions.map(a => `
+            <div class="appt-notes" style="margin-top:6px; color:#EDEBE4;">
+              ${formatDateTime(a.datetime)}${a.notes ? ` — ${escapeHtml(a.notes)}` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : '';
+      return `
+        <div class="schedule-day">
+          <div class="appt-row" data-action="toggle-history" data-id="${entry.clientId}" style="cursor:pointer;">
+            <div class="appt-info">
+              <div class="appt-client">${escapeHtml(entry.name)}</div>
+              <div class="appt-notes">${entry.sessions.length} completed session${entry.sessions.length === 1 ? '' : 's'}</div>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(${open ? '180' : '0'}deg); transition: transform 0.15s ease;"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          ${sessionListHtml}
+        </div>
+      `;
+    }).join('');
+
+    historyView.innerHTML = summaryHtml + rowsHtml;
+
+    historyView.querySelectorAll('[data-action="toggle-history"]').forEach(row => {
+      row.addEventListener('click', () => {
+        const id = row.dataset.id;
+        openHistoryClientId = openHistoryClientId === id ? null : id;
         render();
       });
     });
