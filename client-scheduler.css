@@ -265,7 +265,6 @@
   .btn:focus-visible { outline: 2px solid #D6402D; outline-offset: 1px; }
   .btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-  .btn-deduct { color: #E2857A; }
   .btn-add { color: #7ac298; }
   .btn-reset { color: #9aa4b5; }
   .btn-schedule { color: #7fa9d1; }

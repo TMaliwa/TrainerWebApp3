@@ -68,6 +68,7 @@
   let openResetId = null;
   let openScheduleId = null;
   let openEditId = null;
+  let openPostponeId = null;
   let openHistoryClientId = null;
   let view = "clients"; // "clients" | "schedule" | "history"
   let syncing = false;
@@ -207,17 +208,27 @@
     return `${dateStr} · ${timeStr}`;
   }
 
+  function toLocalDateInputValue(d) {
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  function toLocalTimeInputValue(d) {
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   function nextAppointmentFor(clientId) {
     const now = Date.now();
     const upcoming = appointments
-      .filter(a => a.clientId === clientId && !a.completed && new Date(a.datetime).getTime() >= now)
+      .filter(a => a.clientId === clientId && !a.completed && !a.cancelled && new Date(a.datetime).getTime() >= now)
       .sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
     return upcoming[0] || null;
   }
 
   function render() {
     statClients.textContent = clients.length;
-    statSessions.textContent = appointments.filter(a => !a.completed).length;
+    statSessions.textContent = appointments.filter(a => !a.completed && !a.cancelled).length;
 
     if (view === 'schedule') {
       clientsToolbar.style.display = 'none';
@@ -265,7 +276,7 @@
   function renderScheduleView() {
     const now = Date.now();
     const upcoming = appointments
-      .filter(a => !a.completed)
+      .filter(a => !a.completed && !a.cancelled)
       .slice()
       .sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
 
@@ -286,28 +297,46 @@
     scheduleView.innerHTML = order.map(dayKey => {
       const rows = groups[dayKey].map(a => {
         const c = clients.find(cl => cl.id === a.clientId);
-        const overdue = new Date(a.datetime).getTime() < now;
-        const timeStr = new Date(a.datetime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        const apptDate = new Date(a.datetime);
+        const overdue = apptDate.getTime() < now;
+        const timeStr = apptDate.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        const showPostpone = openPostponeId === a.id;
+        const postponeDateVal = isNaN(apptDate.getTime()) ? '' : toLocalDateInputValue(apptDate);
+        const postponeTimeVal = isNaN(apptDate.getTime()) ? '' : toLocalTimeInputValue(apptDate);
         return `
-          <div class="appt-row${overdue ? ' appt-overdue' : ''}" data-appt-id="${a.id}">
-            <div class="appt-time">${timeStr}</div>
-            <div class="appt-info">
-              <div class="appt-client">${c ? escapeHtml(c.name) : 'Unknown client'}</div>
-              ${a.notes ? `<div class="appt-notes">${escapeHtml(a.notes)}</div>` : ''}
+          <div data-appt-id="${a.id}">
+            <div class="appt-row${overdue ? ' appt-overdue' : ''}">
+              <div class="appt-time">${timeStr}</div>
+              <div class="appt-info">
+                <div class="appt-client">${c ? escapeHtml(c.name) : 'Unknown client'}</div>
+                ${a.notes ? `<div class="appt-notes">${escapeHtml(a.notes)}</div>` : ''}
+              </div>
+              <div class="appt-actions">
+                <button class="btn btn-add" data-action="complete-appt" data-id="${a.id}" title="Mark this session complete">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  Done
+                </button>
+                <button class="btn btn-schedule" data-action="toggle-postpone" data-id="${a.id}" title="Postpone — pick a new date and time, the client is notified">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  Postpone
+                </button>
+                <button class="icon-btn remove-btn" data-action="cancel-appt" data-id="${a.id}" aria-label="Cancel session" title="Cancel session (does not refund the session; recorded in History)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
             </div>
-            <div class="appt-actions">
-              <button class="btn btn-add" data-action="complete-appt" data-id="${a.id}" title="Mark this session complete">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                Done
-              </button>
-              <button class="btn btn-schedule" data-action="postpone-appt" data-id="${a.id}" title="Postpone — refunds the session so you can reschedule later">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                Postpone
-              </button>
-              <button class="icon-btn remove-btn" data-action="cancel-appt" data-id="${a.id}" aria-label="Cancel session" title="Cancel session (does not refund the session)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
+            ${showPostpone ? `
+            <form class="reset-form" data-action="postpone-form" data-id="${a.id}" style="margin-bottom:8px;">
+              <label>Reschedule to a new date &amp; time</label>
+              <div class="reset-inputs" style="flex-wrap: wrap;">
+                <input type="date" id="postpone-date-${a.id}" value="${postponeDateVal}" required style="width:auto; flex:1;" />
+                <input type="time" id="postpone-time-${a.id}" value="${postponeTimeVal}" required style="width:auto; flex:1;" />
+              </div>
+              <div class="reset-inputs">
+                <button type="submit" class="btn btn-confirm">Confirm new time</button>
+                <button type="button" class="btn btn-cancel" data-action="cancel-postpone">Cancel</button>
+              </div>
+            </form>` : ''}
           </div>
         `;
       }).join('');
@@ -324,24 +353,60 @@
         render();
       });
     });
-    scheduleView.querySelectorAll('[data-action="postpone-appt"]').forEach(btn => {
+    scheduleView.querySelectorAll('[data-action="toggle-postpone"]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const appt = appointments.find(a => a.id === btn.dataset.id);
-        if (appt) {
-          const c = clients.find(cl => cl.id === appt.clientId);
-          // Postponing refunds the session that was reserved when this
-          // was scheduled, so the client isn't charged for a session
-          // that hasn't happened yet — reschedule later to deduct again.
-          if (c) c.sessions = Math.min(c.cap, c.sessions + 1);
-          appointments = appointments.filter(a => a.id !== appt.id);
+        openPostponeId = openPostponeId === btn.dataset.id ? null : btn.dataset.id;
+        render();
+      });
+    });
+    scheduleView.querySelectorAll('[data-action="cancel-postpone"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        openPostponeId = null;
+        render();
+      });
+    });
+    scheduleView.querySelectorAll('[data-action="postpone-form"]').forEach(form => {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const id = form.dataset.id;
+        const appt = appointments.find(a => a.id === id);
+        if (!appt) return;
+        const dateVal = document.getElementById(`postpone-date-${id}`).value;
+        const timeVal = document.getElementById(`postpone-time-${id}`).value;
+        if (!dateVal || !timeVal) return;
+
+        const newDatetime = new Date(`${dateVal}T${timeVal}`).toISOString();
+
+        const conflict = findConflict(newDatetime, appt.clientId);
+        if (conflict) {
+          const conflictClient = clients.find(cl => cl.id === conflict.clientId);
+          const proceed = confirm(
+            `${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Reschedule to this time anyway?`
+          );
+          if (!proceed) return;
         }
+
+        // Rescheduling just moves the session to a new time — it was
+        // already deducted from the client's balance when first booked,
+        // so no balance change here.
+        appt.datetime = newDatetime;
+        openPostponeId = null;
         saveClients();
         render();
+
+        const c = clients.find(cl => cl.id === appt.clientId);
+        if (c && c.email) {
+          sendSessionNotification(c, newDatetime, appt.notes, 'reschedule');
+        }
       });
     });
     scheduleView.querySelectorAll('[data-action="cancel-appt"]').forEach(btn => {
       btn.addEventListener('click', () => {
-        appointments = appointments.filter(a => a.id !== btn.dataset.id);
+        // Cancelling does not refund the session, and keeps the
+        // appointment around (flagged) so it shows up in History.
+        const appt = appointments.find(a => a.id === btn.dataset.id);
+        if (appt) appt.cancelled = true;
+        if (openPostponeId === btn.dataset.id) openPostponeId = null;
         saveClients();
         render();
       });
@@ -350,9 +415,11 @@
 
   function renderHistoryView() {
     const completed = appointments.filter(a => a.completed);
+    const cancelled = appointments.filter(a => a.cancelled);
+    const allHistory = completed.concat(cancelled);
 
-    if (completed.length === 0) {
-      historyView.innerHTML = `<div class="empty-state">No completed sessions yet. Mark a scheduled session "Done" to see it show up here.</div>`;
+    if (allHistory.length === 0) {
+      historyView.innerHTML = `<div class="empty-state">No session history yet. Sessions marked "Done" or cancelled will show up here.</div>`;
       return;
     }
 
@@ -371,16 +438,22 @@
       })
       .sort((a, b) => b.sessions.length - a.sessions.length);
 
-    const summaryHtml = `
-      <div class="appt-row" style="margin-bottom:18px;">
+    const statsHtml = `
+      <div class="appt-row" style="margin-bottom:10px;">
         <div class="appt-info">
           <div class="appt-client">Total completed sessions</div>
         </div>
         <div class="count-num" style="font-size:22px;">${completed.length}</div>
       </div>
+      <div class="appt-row" style="margin-bottom:22px;">
+        <div class="appt-info">
+          <div class="appt-client">Total cancelled sessions</div>
+        </div>
+        <div class="count-num" style="font-size:22px; color:#E2857A;">${cancelled.length}</div>
+      </div>
     `;
 
-    const rowsHtml = summaryOrder.map(entry => {
+    const byClientHtml = summaryOrder.length === 0 ? '' : summaryOrder.map(entry => {
       const open = openHistoryClientId === entry.clientId;
       const sessionListHtml = open ? `
         <div style="padding: 4px 14px 12px;">
@@ -405,7 +478,43 @@
       `;
     }).join('');
 
-    historyView.innerHTML = summaryHtml + rowsHtml;
+    // Group every history entry (completed + cancelled) by month, most
+    // recent month first, most recent session first within each month.
+    const monthGroups = {};
+    const monthOrder = [];
+    allHistory
+      .slice()
+      .sort((a, b) => new Date(b.datetime) - new Date(a.datetime))
+      .forEach(a => {
+        const d = new Date(a.datetime);
+        const monthKey = isNaN(d.getTime()) ? 'Unknown date' : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+        if (!monthGroups[monthKey]) { monthGroups[monthKey] = []; monthOrder.push(monthKey); }
+        monthGroups[monthKey].push(a);
+      });
+
+    const byMonthHtml = monthOrder.map(monthKey => {
+      const rows = monthGroups[monthKey].map(a => {
+        const c = clients.find(cl => cl.id === a.clientId);
+        const isCancelled = !!a.cancelled;
+        return `
+          <div class="appt-row">
+            <div class="appt-info">
+              <div class="appt-client">${c ? escapeHtml(c.name) : 'Unknown client'}</div>
+              <div class="appt-notes">${formatDateTime(a.datetime)}${a.notes ? ` — ${escapeHtml(a.notes)}` : ''}</div>
+            </div>
+            <div class="next-session" style="color:${isCancelled ? '#E2857A' : '#7ac298'};">${isCancelled ? 'Cancelled' : 'Completed'}</div>
+          </div>
+        `;
+      }).join('');
+      return `<div class="schedule-day"><div class="schedule-day-label">${monthKey}</div>${rows}</div>`;
+    }).join('');
+
+    historyView.innerHTML = `
+      ${statsHtml}
+      ${byClientHtml ? `<div class="schedule-day-label" style="margin-bottom:10px;">By client</div>${byClientHtml}` : ''}
+      <div class="schedule-day-label" style="margin:22px 0 10px;">By month</div>
+      ${byMonthHtml}
+    `;
 
     historyView.querySelectorAll('[data-action="toggle-history"]').forEach(row => {
       row.addEventListener('click', () => {
@@ -470,14 +579,6 @@
         </div>` : ''}
 
         <div class="btn-row">
-          <button class="btn btn-deduct" data-action="deduct" data-id="${c.id}" ${c.sessions === 0 ? 'disabled' : ''}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Use one
-          </button>
-          <button class="btn btn-add" data-action="add" data-id="${c.id}">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add one
-          </button>
           <button class="btn btn-schedule" data-action="toggle-schedule" data-id="${c.id}" ${c.sessions === 0 ? 'disabled title="No sessions remaining"' : ''}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             Schedule
@@ -539,7 +640,7 @@
     grid.querySelectorAll('[data-action="remove"]').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.id;
-        const pending = appointments.filter(a => a.clientId === id && !a.completed);
+        const pending = appointments.filter(a => a.clientId === id && !a.completed && !a.cancelled);
         if (pending.length > 0) {
           const c = clients.find(c => c.id === id);
           const name = c ? c.name : 'This client';
@@ -547,22 +648,6 @@
           return;
         }
         clients = clients.filter(c => c.id !== id);
-        saveClients();
-        render();
-      });
-    });
-    grid.querySelectorAll('[data-action="deduct"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const c = clients.find(c => c.id === btn.dataset.id);
-        if (c) c.sessions = Math.max(0, c.sessions - 1);
-        saveClients();
-        render();
-      });
-    });
-    grid.querySelectorAll('[data-action="add"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const c = clients.find(c => c.id === btn.dataset.id);
-        if (c) { c.sessions += 1; c.cap = Math.max(c.cap, c.sessions); }
         saveClients();
         render();
       });
@@ -673,7 +758,7 @@
         render();
 
         if (c && c.email) {
-          sendBookingConfirmation(c, datetime, notesVal);
+          sendSessionNotification(c, datetime, notesVal, 'booking');
         }
       });
     });
@@ -685,7 +770,7 @@
   function findConflict(datetimeIso, excludeClientId) {
     const target = new Date(datetimeIso).getTime();
     return appointments.find(a => {
-      if (a.completed) return false;
+      if (a.completed || a.cancelled) return false;
       if (a.clientId === excludeClientId) return false;
       const t = new Date(a.datetime).getTime();
       return Math.abs(t - target) < SESSION_DURATION_MINUTES * 60000;
@@ -693,15 +778,17 @@
   }
 
   // Fire-and-forget: let the trainer know if it fails, but don't block
-  // the scheduling flow on it.
-  function sendBookingConfirmation(client, datetimeIso, notes) {
+  // the scheduling flow on it. `type` is 'booking' (default) or
+  // 'reschedule', which changes the email's subject/wording server-side.
+  function sendSessionNotification(client, datetimeIso, notes, type) {
     const url = getBackendUrl();
     if (!url || !auth) return;
     const q = '?action=notifyBooking&token=' + encodeURIComponent(auth.token)
       + '&email=' + encodeURIComponent(client.email)
       + '&clientName=' + encodeURIComponent(client.name)
       + '&datetime=' + encodeURIComponent(datetimeIso)
-      + '&notes=' + encodeURIComponent(notes || '');
+      + '&notes=' + encodeURIComponent(notes || '')
+      + '&type=' + encodeURIComponent(type || 'booking');
     fetch(url + q)
       .then(res => res.json())
       .then(data => {
