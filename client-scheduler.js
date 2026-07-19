@@ -33,6 +33,31 @@
     return BACKEND_URL;
   }
 
+  // ---- Google Places autocomplete for the session location field ----
+  // Paste your Google Maps API key here (see the setup guide) to turn on
+  // address autocomplete. Leave blank and the Location field still works
+  // as a plain text input — it just won't suggest addresses as you type.
+  const GOOGLE_MAPS_API_KEY = 'AIzaSyCpFoMSHMFdFClcIW_kkUKz30BEZgDQDVk';
+
+  if (GOOGLE_MAPS_API_KEY) {
+    const mapsScript = document.createElement('script');
+    mapsScript.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_MAPS_API_KEY) + '&libraries=places';
+    mapsScript.async = true;
+    document.head.appendChild(mapsScript);
+  }
+
+  // No-op (leaves a plain text input) if the Maps script isn't loaded —
+  // either because GOOGLE_MAPS_API_KEY is blank, or it hasn't finished
+  // loading yet.
+  function bindLocationAutocomplete(inputEl) {
+    if (!inputEl || !window.google || !window.google.maps || !window.google.maps.places) return;
+    try {
+      new google.maps.places.Autocomplete(inputEl, { fields: ['formatted_address'] });
+    } catch (e) {
+      console.error('Could not initialize location autocomplete:', e);
+    }
+  }
+
   function loadClientsLocal() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -309,6 +334,7 @@
               <div class="appt-time">${timeStr}</div>
               <div class="appt-info">
                 <div class="appt-client">${c ? escapeHtml(c.name) : 'Unknown client'}</div>
+                ${a.location ? `<div class="appt-notes">Location: ${escapeHtml(a.location)}</div>` : ''}
                 ${a.notes ? `<div class="appt-notes">${escapeHtml(a.notes)}</div>` : ''}
               </div>
               <div class="appt-actions">
@@ -380,10 +406,8 @@
         const conflict = findConflict(newDatetime, appt.clientId);
         if (conflict) {
           const conflictClient = clients.find(cl => cl.id === conflict.clientId);
-          const proceed = confirm(
-            `${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Reschedule to this time anyway?`
-          );
-          if (!proceed) return;
+          alert(`${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Pick a different time.`);
+          return;
         }
 
         // Rescheduling just moves the session to a new time — it was
@@ -396,7 +420,7 @@
 
         const c = clients.find(cl => cl.id === appt.clientId);
         if (c && c.email) {
-          sendSessionNotification(c, newDatetime, appt.notes, 'reschedule');
+          sendSessionNotification(c, newDatetime, appt.notes, 'reschedule', appt.location);
         }
       });
     });
@@ -500,7 +524,7 @@
           <div class="appt-row">
             <div class="appt-info">
               <div class="appt-client">${c ? escapeHtml(c.name) : 'Unknown client'}</div>
-              <div class="appt-notes">${formatDateTime(a.datetime)}${a.notes ? ` — ${escapeHtml(a.notes)}` : ''}</div>
+              <div class="appt-notes">${formatDateTime(a.datetime)}${a.location ? ` — ${escapeHtml(a.location)}` : ''}${a.notes ? ` — ${escapeHtml(a.notes)}` : ''}</div>
             </div>
             <div class="next-session" style="color:${isCancelled ? '#E2857A' : '#7ac298'};">${isCancelled ? 'Cancelled' : 'Completed'}</div>
           </div>
@@ -596,10 +620,10 @@
             <input type="text" id="edit-name-${c.id}" value="${escapeHtml(c.name)}" placeholder="Full name" required style="width:auto; flex:1;" />
           </div>
           <div class="reset-inputs">
-            <input type="email" id="edit-email-${c.id}" value="${escapeHtml(c.email || '')}" placeholder="client@example.com" style="width:auto; flex:1;" />
+            <input type="email" id="edit-email-${c.id}" value="${escapeHtml(c.email || '')}" placeholder="client@example.com" required style="width:auto; flex:1;" />
           </div>
           <div class="reset-inputs">
-            <input type="tel" id="edit-phone-${c.id}" value="${escapeHtml(c.phone || '')}" placeholder="082 123 4567" style="width:auto; flex:1;" />
+            <input type="tel" id="edit-phone-${c.id}" value="${escapeHtml(c.phone || '')}" placeholder="082 123 4567" required style="width:auto; flex:1;" />
           </div>
           <div class="reset-inputs">
             <button type="submit" class="btn btn-confirm">Save</button>
@@ -623,6 +647,9 @@
           <div class="reset-inputs" style="flex-wrap: wrap;">
             <input type="date" id="sched-date-${c.id}" required style="width:auto; flex:1;" />
             <input type="time" id="sched-time-${c.id}" required style="width:auto; flex:1;" />
+          </div>
+          <div class="reset-inputs">
+            <input type="text" id="sched-location-${c.id}" placeholder="Location (optional)" autocomplete="off" style="width:auto; flex:1;" />
           </div>
           <div class="reset-inputs">
             <input type="text" id="sched-notes-${c.id}" placeholder="Notes (optional)" style="width:auto; flex:1;" />
@@ -698,7 +725,7 @@
         const name = document.getElementById(`edit-name-${id}`).value.trim();
         const email = document.getElementById(`edit-email-${id}`).value.trim();
         const phone = document.getElementById(`edit-phone-${id}`).value.trim();
-        if (!name) return;
+        if (!name || !email || !phone) return;
         const c = clients.find(c => c.id === id);
         if (c) { c.name = name; c.email = email; c.phone = phone; }
         openEditId = null;
@@ -710,6 +737,9 @@
       btn.addEventListener('click', () => {
         openScheduleId = openScheduleId === btn.dataset.id ? null : btn.dataset.id;
         render();
+        if (openScheduleId) {
+          bindLocationAutocomplete(document.getElementById(`sched-location-${openScheduleId}`));
+        }
       });
     });
     grid.querySelectorAll('[data-action="cancel-schedule"]').forEach(btn => {
@@ -724,6 +754,7 @@
         const id = form.dataset.id;
         const dateVal = document.getElementById(`sched-date-${id}`).value;
         const timeVal = document.getElementById(`sched-time-${id}`).value;
+        const locationVal = document.getElementById(`sched-location-${id}`).value.trim();
         const notesVal = document.getElementById(`sched-notes-${id}`).value.trim();
         if (!dateVal || !timeVal) return;
 
@@ -738,10 +769,8 @@
         const conflict = findConflict(datetime, id);
         if (conflict) {
           const conflictClient = clients.find(cl => cl.id === conflict.clientId);
-          const proceed = confirm(
-            `${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Schedule this one anyway?`
-          );
-          if (!proceed) return;
+          alert(`${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Pick a different time.`);
+          return;
         }
 
         appointments.push({
@@ -749,6 +778,7 @@
           clientId: id,
           datetime,
           notes: notesVal,
+          location: locationVal,
           completed: false,
         });
         // Scheduling reserves a session against the client's remaining balance.
@@ -758,7 +788,7 @@
         render();
 
         if (c && c.email) {
-          sendSessionNotification(c, datetime, notesVal, 'booking');
+          sendSessionNotification(c, datetime, notesVal, 'booking', locationVal);
         }
       });
     });
@@ -780,7 +810,7 @@
   // Fire-and-forget: let the trainer know if it fails, but don't block
   // the scheduling flow on it. `type` is 'booking' (default) or
   // 'reschedule', which changes the email's subject/wording server-side.
-  function sendSessionNotification(client, datetimeIso, notes, type) {
+  function sendSessionNotification(client, datetimeIso, notes, type, location) {
     const url = getBackendUrl();
     if (!url || !auth) return;
     const q = '?action=notifyBooking&token=' + encodeURIComponent(auth.token)
@@ -788,7 +818,8 @@
       + '&clientName=' + encodeURIComponent(client.name)
       + '&datetime=' + encodeURIComponent(datetimeIso)
       + '&notes=' + encodeURIComponent(notes || '')
-      + '&type=' + encodeURIComponent(type || 'booking');
+      + '&type=' + encodeURIComponent(type || 'booking')
+      + '&location=' + encodeURIComponent(location || '');
     fetch(url + q)
       .then(res => res.json())
       .then(data => {
@@ -821,7 +852,7 @@
     const email = document.getElementById('newEmail').value.trim();
     const phone = document.getElementById('newPhone').value.trim();
     const sessions = parseInt(document.getElementById('newSessions').value, 10);
-    if (!name || Number.isNaN(sessions) || sessions < 0) return;
+    if (!name || !email || !phone || Number.isNaN(sessions) || sessions < 0) return;
     clients.push({
       id: 'c' + Date.now(),
       name,
@@ -835,6 +866,61 @@
     overlay.classList.add('hidden');
     saveClients();
     render();
+  });
+
+  // ---- Trainer profile ----
+  const profileOverlay = document.getElementById('profileOverlay');
+  const profileForm = document.getElementById('profileForm');
+  const profileStatus = document.getElementById('profileStatus');
+
+  document.getElementById('profileBtn').addEventListener('click', () => {
+    profileOverlay.classList.remove('hidden');
+    profileStatus.textContent = 'Loading…';
+    document.getElementById('profileEmail').value = auth.email || '';
+    const url = getBackendUrl();
+    if (!url || !auth) return;
+    fetch(url + '?action=getProfile&token=' + encodeURIComponent(auth.token))
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success) {
+          document.getElementById('profileCompanyName').value = data.companyName || '';
+          document.getElementById('profilePhone').value = data.phone || '';
+          profileStatus.textContent = '';
+        } else {
+          profileStatus.textContent = (data && data.error) || 'Could not load profile';
+        }
+      })
+      .catch(() => { profileStatus.textContent = 'Network error — check your connection'; });
+  });
+  document.getElementById('closeProfileBtn').addEventListener('click', () => {
+    profileOverlay.classList.add('hidden');
+  });
+  profileOverlay.addEventListener('click', (e) => {
+    if (e.target === profileOverlay) profileOverlay.classList.add('hidden');
+  });
+
+  profileForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const companyName = document.getElementById('profileCompanyName').value.trim();
+    const phone = document.getElementById('profilePhone').value.trim();
+    if (!companyName || !phone) return;
+    const url = getBackendUrl();
+    if (!url || !auth) return;
+    profileStatus.textContent = 'Saving…';
+    const q = '?action=updateProfile&token=' + encodeURIComponent(auth.token)
+      + '&companyName=' + encodeURIComponent(companyName)
+      + '&phone=' + encodeURIComponent(phone);
+    fetch(url + q)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success) {
+          profileStatus.textContent = 'Saved.';
+          setTimeout(() => { profileOverlay.classList.add('hidden'); }, 500);
+        } else {
+          profileStatus.textContent = (data && data.error) || 'Could not save profile';
+        }
+      })
+      .catch(() => { profileStatus.textContent = 'Network error — check your connection'; });
   });
 
   function signOut() {

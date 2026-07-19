@@ -29,6 +29,16 @@ function requireBackend() {
   return true;
 }
 
+// Mirrors the server-side check in AppsScript.gs — kept in sync so the
+// user finds out here, instantly, rather than after a round trip.
+function passwordIssue(password) {
+  if (!password || password.length < 8) return 'Password must be at least 8 characters';
+  if (!/[a-z]/.test(password)) return 'Password must include a lowercase letter';
+  if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter';
+  if (!/[0-9]/.test(password)) return 'Password must include a number';
+  return null;
+}
+
 function completeLogin(token, email) {
   localStorage.setItem(AUTH_KEY, JSON.stringify({ token, email }));
   showStatus('Signed in — redirecting…', 'ok');
@@ -89,9 +99,16 @@ signupForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!requireBackend()) return;
   const email = document.getElementById('signupEmail').value.trim();
+  const phone = document.getElementById('signupPhone').value.trim();
+  const companyName = document.getElementById('signupCompanyName').value.trim();
   const password = document.getElementById('signupPassword').value;
   const confirm = document.getElementById('signupPasswordConfirm').value;
-  if (!email || !password) return;
+  if (!email || !phone || !companyName || !password) return;
+  const issue = passwordIssue(password);
+  if (issue) {
+    showStatus(issue, 'error');
+    return;
+  }
   if (password !== confirm) {
     showStatus('Passwords do not match', 'error');
     return;
@@ -100,7 +117,8 @@ signupForm.addEventListener('submit', async (e) => {
   btn.disabled = true;
   showStatus('Creating account…', 'info');
   try {
-    const url = backendUrl() + '?action=signup&email=' + encodeURIComponent(email) + '&password=' + encodeURIComponent(password);
+    const url = backendUrl() + '?action=signup&email=' + encodeURIComponent(email) + '&password=' + encodeURIComponent(password)
+      + '&phone=' + encodeURIComponent(phone) + '&companyName=' + encodeURIComponent(companyName);
     const res = await fetch(url);
     const data = await res.json();
     if (data.success) {
@@ -200,6 +218,11 @@ document.getElementById('forgotResetForm').addEventListener('submit', async (e) 
   const newPassword = document.getElementById('resetNewPassword').value;
   const confirm = document.getElementById('resetNewPasswordConfirm').value;
   if (!code || !newPassword) return;
+  const issue = passwordIssue(newPassword);
+  if (issue) {
+    showStatus(issue, 'error');
+    return;
+  }
   if (newPassword !== confirm) {
     showStatus('Passwords do not match', 'error');
     return;

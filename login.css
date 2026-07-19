@@ -87,6 +87,8 @@
   }
   .field input:focus { outline: 2px solid #D6402D; outline-offset: 1px; }
 
+  .field-hint { margin: -8px 0 14px; font-size: 11.5px; color: #6d7482; line-height: 1.4; }
+
   .btn-primary {
     width: 100%;
     background: #D6402D;

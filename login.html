@@ -44,9 +44,18 @@
         <input type="email" id="signupEmail" placeholder="you@example.com" required />
       </label>
       <label class="field">
+        <span>Mobile number</span>
+        <input type="tel" id="signupPhone" placeholder="082 123 4567" required />
+      </label>
+      <label class="field">
+        <span>Company name</span>
+        <input type="text" id="signupCompanyName" placeholder="Your business name" required />
+      </label>
+      <label class="field">
         <span>Password</span>
         <input type="password" id="signupPassword" placeholder="At least 8 characters" minlength="8" required />
       </label>
+      <p class="field-hint">At least 8 characters, with an uppercase letter, a lowercase letter, and a number.</p>
       <label class="field">
         <span>Confirm password</span>
         <input type="password" id="signupPasswordConfirm" placeholder="••••••••" minlength="8" required />
@@ -78,6 +87,7 @@
         <span>New password</span>
         <input type="password" id="resetNewPassword" placeholder="At least 8 characters" minlength="8" required />
       </label>
+      <p class="field-hint">At least 8 characters, with an uppercase letter, a lowercase letter, and a number.</p>
       <label class="field">
         <span>Confirm new password</span>
         <input type="password" id="resetNewPasswordConfirm" placeholder="••••••••" minlength="8" required />
