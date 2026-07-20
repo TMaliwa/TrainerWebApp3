@@ -145,6 +145,10 @@
   let calendarWeekStart = startOfWeek(new Date());
   let calPendingSlot = null; // { date: 'YYYY-MM-DD', time: 'HH:MM' } while picking a client for an open slot
 
+  // ---- History stats chart state ----
+  let statsPeriodType = 'week'; // "day" | "week" | "month" | "year"
+  let statsAnchorDate = new Date();
+
   // Save = cache locally immediately, then push to the backend if configured.
   function saveClients() {
     cacheClientsLocal();
@@ -500,13 +504,145 @@
     });
   }
 
+  function getStatsRange(periodType, anchorDate) {
+    let start, end, label;
+    if (periodType === 'day') {
+      start = new Date(anchorDate); start.setHours(0, 0, 0, 0);
+      end = new Date(start); end.setDate(end.getDate() + 1);
+      label = start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    } else if (periodType === 'month') {
+      start = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
+      end = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 1);
+      label = start.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    } else if (periodType === 'year') {
+      start = new Date(anchorDate.getFullYear(), 0, 1);
+      end = new Date(anchorDate.getFullYear() + 1, 0, 1);
+      label = String(start.getFullYear());
+    } else { // week
+      start = startOfWeek(anchorDate);
+      end = new Date(start); end.setDate(end.getDate() + 7);
+      const lastDay = new Date(end); lastDay.setDate(lastDay.getDate() - 1);
+      label = `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – `
+        + `${lastDay.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    }
+    return { start, end, label };
+  }
+
+  function shiftStatsAnchor(periodType, anchorDate, dir) {
+    const d = new Date(anchorDate);
+    if (periodType === 'day') d.setDate(d.getDate() + dir);
+    else if (periodType === 'month') d.setMonth(d.getMonth() + dir);
+    else if (periodType === 'year') d.setFullYear(d.getFullYear() + dir);
+    else d.setDate(d.getDate() + dir * 7); // week
+    return d;
+  }
+
+  function renderStatsPanel() {
+    const range = getStatsRange(statsPeriodType, statsAnchorDate);
+    const inRange = appointments.filter(a => {
+      const dt = new Date(a.datetime);
+      return dt >= range.start && dt < range.end;
+    });
+    const bars = [
+      { label: 'Pending', count: inRange.filter(a => !a.completed && !a.cancelled).length, color: '#7fa9d1' },
+      { label: 'Completed', count: inRange.filter(a => a.completed).length, color: '#7ac298' },
+      { label: 'Cancelled', count: inRange.filter(a => a.cancelled).length, color: '#E2857A' },
+    ];
+    const maxCount = Math.max(bars[0].count, bars[1].count, bars[2].count, 1);
+
+    const chartHeight = 140;
+    const barWidth = 64;
+    const gap = 40;
+    const svgWidth = bars.length * barWidth + (bars.length + 1) * gap;
+
+    const barsHtml = bars.map((b, i) => {
+      const x = gap + i * (barWidth + gap);
+      const h = Math.max(Math.round((b.count / maxCount) * chartHeight), b.count > 0 ? 2 : 0);
+      const y = chartHeight - h;
+      return `
+        <text x="${x + barWidth / 2}" y="${y - 10}" text-anchor="middle" fill="#F5F3EE" font-family="'JetBrains Mono', monospace" font-size="16" font-weight="700">${b.count}</text>
+        <rect x="${x}" y="${y}" width="${barWidth}" height="${h}" rx="6" fill="${b.color}"></rect>
+        <text x="${x + barWidth / 2}" y="${chartHeight + 22}" text-anchor="middle" fill="#8b93a1" font-family="'Inter', sans-serif" font-size="12">${b.label}</text>
+      `;
+    }).join('');
+
+    const periods = [['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']];
+    const toggleHtml = periods.map(([key, label]) => `
+      <button type="button" class="tab-btn${statsPeriodType === key ? ' active' : ''}" data-action="stats-period" data-period="${key}" style="padding:6px 12px; font-size:11.5px;">${label}</button>
+    `).join('');
+
+    return `
+      <div class="no-print" style="margin-bottom:26px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+          <div style="display:flex; gap:6px;">${toggleHtml}</div>
+          <div class="cal-toolbar" style="margin:0;">
+            <button type="button" class="cal-nav-btn" data-action="stats-prev" aria-label="Previous period">‹</button>
+            <div class="cal-week-label" style="min-width:auto;">${escapeHtml(range.label)}</div>
+            <button type="button" class="cal-nav-btn" data-action="stats-next" aria-label="Next period">›</button>
+          </div>
+        </div>
+        <svg viewBox="0 0 ${svgWidth} ${chartHeight + 40}" style="width:100%; max-width:420px; display:block; margin:0 auto;">
+          ${barsHtml}
+        </svg>
+      </div>
+    `;
+  }
+
+  function attachStatsListeners() {
+    historyView.querySelectorAll('[data-action="stats-period"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        statsPeriodType = btn.dataset.period;
+        render();
+      });
+    });
+    const prevBtn = historyView.querySelector('[data-action="stats-prev"]');
+    if (prevBtn) prevBtn.addEventListener('click', () => {
+      statsAnchorDate = shiftStatsAnchor(statsPeriodType, statsAnchorDate, -1);
+      render();
+    });
+    const nextBtn = historyView.querySelector('[data-action="stats-next"]');
+    if (nextBtn) nextBtn.addEventListener('click', () => {
+      statsAnchorDate = shiftStatsAnchor(statsPeriodType, statsAnchorDate, 1);
+      render();
+    });
+  }
+
+  function downloadButtonHtml() {
+    return `
+      <div class="no-print" style="display:flex; justify-content:flex-end; margin-bottom:14px;">
+        <button type="button" class="btn btn-reset" data-action="download-history-pdf" style="flex:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download PDF
+        </button>
+      </div>
+    `;
+  }
+
+  function attachDownloadListener() {
+    const downloadPdfBtn = historyView.querySelector('[data-action="download-history-pdf"]');
+    if (downloadPdfBtn) {
+      downloadPdfBtn.addEventListener('click', () => {
+        const prevTitle = document.title;
+        document.title = `Session Book History ${new Date().toISOString().slice(0, 10)}`;
+        window.print();
+        document.title = prevTitle;
+      });
+    }
+  }
+
   function renderHistoryView() {
     const completed = appointments.filter(a => a.completed);
     const cancelled = appointments.filter(a => a.cancelled);
     const allHistory = completed.concat(cancelled);
 
     if (allHistory.length === 0) {
-      historyView.innerHTML = `<div class="empty-state">No session history yet. Sessions marked "Done" or cancelled will show up here.</div>`;
+      historyView.innerHTML = `
+        ${downloadButtonHtml()}
+        ${renderStatsPanel()}
+        <div class="empty-state">No completed or cancelled sessions yet. Sessions marked "Done" or cancelled will show up here.</div>
+      `;
+      attachDownloadListener();
+      attachStatsListeners();
       return;
     }
 
@@ -597,6 +733,8 @@
     }).join('');
 
     historyView.innerHTML = `
+      ${downloadButtonHtml()}
+      ${renderStatsPanel()}
       ${statsHtml}
       ${byClientHtml ? `<div class="schedule-day-label" style="margin-bottom:10px;">By client</div>${byClientHtml}` : ''}
       <div class="schedule-day-label" style="margin:22px 0 10px;">By month</div>
@@ -610,6 +748,9 @@
         render();
       });
     });
+
+    attachDownloadListener();
+    attachStatsListeners();
   }
 
   function fmtCalHour(h) {

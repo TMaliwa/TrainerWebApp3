@@ -548,3 +548,27 @@
     .btn-primary { transition: none; }
     .appt-highlight { animation: none; outline: 2px solid #D6402D; }
   }
+
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #fff !important; color: #14181f !important; padding: 0 !important; }
+    .header, .tabs, .toolbar, .sync-row, #grid, #emptyState, #scheduleView, #calendarView {
+      display: none !important;
+    }
+    #historyView { display: block !important; max-width: 100% !important; }
+    #historyView .appt-row, #historyView .schedule-day {
+      background: #fff !important;
+      border: 1px solid #ccc !important;
+      color: #14181f !important;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    #historyView .appt-client,
+    #historyView .count-num,
+    #historyView .schedule-day-label,
+    #historyView .next-session {
+      color: #14181f !important;
+    }
+    #historyView .appt-notes, #historyView .count-label { color: #555 !important; }
+    #historyView svg { display: none !important; }
+  }

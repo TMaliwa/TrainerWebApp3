@@ -52,6 +52,7 @@ const signinForm = document.getElementById('signinForm');
 const signupForm = document.getElementById('signupForm');
 const authTabSignin = document.getElementById('authTabSignin');
 const authTabSignup = document.getElementById('authTabSignup');
+const forgotPasswordLink = document.getElementById('forgotPasswordLink');
 let pendingEmail = '';
 
 authTabSignin.addEventListener('click', () => {
@@ -59,6 +60,7 @@ authTabSignin.addEventListener('click', () => {
   authTabSignup.classList.remove('active');
   signinForm.classList.remove('hidden');
   signupForm.classList.add('hidden');
+  forgotPasswordLink.classList.remove('hidden');
   showStatus('', '');
 });
 authTabSignup.addEventListener('click', () => {
@@ -66,6 +68,7 @@ authTabSignup.addEventListener('click', () => {
   authTabSignin.classList.remove('active');
   signupForm.classList.remove('hidden');
   signinForm.classList.add('hidden');
+  forgotPasswordLink.classList.add('hidden');
   showStatus('', '');
 });
 
@@ -165,12 +168,12 @@ document.getElementById('backToProviders').addEventListener('click', () => {
   showStatus('', '');
 });
 
-// ---------------- Forgot password flow ----------------
+// ---------------- Forgot password flow (Sign in tab only) ----------------
 const forgotRequestView = document.getElementById('forgotRequestView');
 const forgotResetView = document.getElementById('forgotResetView');
 let pendingResetEmail = '';
 
-document.getElementById('forgotPasswordLink').addEventListener('click', () => {
+forgotPasswordLink.addEventListener('click', () => {
   providersView.classList.add('hidden');
   forgotRequestView.classList.remove('hidden');
   showStatus('', '');
