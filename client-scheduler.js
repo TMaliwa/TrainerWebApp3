@@ -127,9 +127,23 @@
   let openEditId = null;
   let openPostponeId = null;
   let openHistoryClientId = null;
-  let view = "clients"; // "clients" | "schedule" | "history"
+  let view = "clients"; // "clients" | "schedule" | "calendar" | "history"
   let syncing = false;
   let syncError = false;
+
+  // ---- Calendar view state ----
+  const CAL_START_HOUR = 5; // 5am
+  const CAL_END_HOUR = 21; // 9pm
+  function startOfWeek(d) {
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = (day === 0 ? -6 : 1) - day; // Monday-start week
+    date.setDate(date.getDate() + diff);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+  let calendarWeekStart = startOfWeek(new Date());
+  let calPendingSlot = null; // { date: 'YYYY-MM-DD', time: 'HH:MM' } while picking a client for an open slot
 
   // Save = cache locally immediately, then push to the backend if configured.
   function saveClients() {
@@ -231,9 +245,11 @@
   const addForm = document.getElementById('addForm');
 
   const historyView = document.getElementById('historyView');
+  const calendarView = document.getElementById('calendarView');
   const tabButtons = {
     clients: document.getElementById('tabClients'),
     schedule: document.getElementById('tabSchedule'),
+    calendar: document.getElementById('tabCalendar'),
     history: document.getElementById('tabHistory'),
   };
   function setView(newView) {
@@ -245,6 +261,7 @@
   }
   tabButtons.clients.addEventListener('click', () => setView('clients'));
   tabButtons.schedule.addEventListener('click', () => setView('schedule'));
+  tabButtons.calendar.addEventListener('click', () => setView('calendar'));
   tabButtons.history.addEventListener('click', () => setView('history'));
 
   function initials(name) {
@@ -292,8 +309,20 @@
       grid.style.display = 'none';
       emptyState.style.display = 'none';
       scheduleView.style.display = 'block';
+      calendarView.style.display = 'none';
       historyView.style.display = 'none';
       renderScheduleView();
+      return;
+    }
+
+    if (view === 'calendar') {
+      clientsToolbar.style.display = 'none';
+      grid.style.display = 'none';
+      emptyState.style.display = 'none';
+      scheduleView.style.display = 'none';
+      calendarView.style.display = 'block';
+      historyView.style.display = 'none';
+      renderCalendarView();
       return;
     }
 
@@ -302,6 +331,7 @@
       grid.style.display = 'none';
       emptyState.style.display = 'none';
       scheduleView.style.display = 'none';
+      calendarView.style.display = 'none';
       historyView.style.display = 'block';
       renderHistoryView();
       return;
@@ -309,6 +339,7 @@
 
     clientsToolbar.style.display = 'flex';
     scheduleView.style.display = 'none';
+    calendarView.style.display = 'none';
     historyView.style.display = 'none';
 
     const filtered = clients.filter(c =>
@@ -580,6 +611,162 @@
       });
     });
   }
+
+  function fmtCalHour(h) {
+    const period = h < 12 ? 'AM' : 'PM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12} ${period}`;
+  }
+
+  function renderCalendarView() {
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(calendarWeekStart);
+      d.setDate(calendarWeekStart.getDate() + i);
+      weekDays.push(d);
+    }
+    const todayKey = new Date().toDateString();
+    const weekLabel = `${weekDays[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – `
+      + `${weekDays[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+    const hours = [];
+    for (let h = CAL_START_HOUR; h <= CAL_END_HOUR; h++) hours.push(h);
+
+    const active = appointments.filter(a => !a.completed && !a.cancelled);
+
+    let headHtml = '<div class="cal-corner"></div>';
+    weekDays.forEach(d => {
+      const isToday = d.toDateString() === todayKey;
+      headHtml += `<div class="cal-day-head${isToday ? ' is-today' : ''}">`
+        + `<div class="cal-day-name">${d.toLocaleDateString(undefined, { weekday: 'short' })}</div>`
+        + `<div class="cal-day-num">${d.getDate()}</div></div>`;
+    });
+
+    let bodyHtml = '';
+    hours.forEach(h => {
+      bodyHtml += `<div class="cal-time-label">${fmtCalHour(h)}</div>`;
+      weekDays.forEach(d => {
+        const dayKey = d.toDateString();
+        const appt = active.find(a => {
+          const ad = new Date(a.datetime);
+          return ad.toDateString() === dayKey && ad.getHours() === h;
+        });
+        if (appt) {
+          const c = clients.find(cl => cl.id === appt.clientId);
+          const timeStr = new Date(appt.datetime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+          bodyHtml += `<div class="cal-cell"><div class="cal-slot" data-action="cal-open-appt" data-id="${appt.id}">`
+            + `<div class="cal-slot-client">${c ? escapeHtml(c.name) : 'Unknown client'}</div>`
+            + `<div class="cal-slot-time">${timeStr}</div></div></div>`;
+        } else {
+          const pad = n => String(n).padStart(2, '0');
+          const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+          const timeStr = `${pad(h)}:00`;
+          bodyHtml += `<div class="cal-cell" data-action="cal-open-slot" data-date="${dateStr}" data-time="${timeStr}"></div>`;
+        }
+      });
+    });
+
+    calendarView.innerHTML = `
+      <div class="cal-toolbar">
+        <button type="button" class="cal-nav-btn" data-action="cal-prev" aria-label="Previous week">‹</button>
+        <button type="button" class="btn btn-reset" data-action="cal-today" style="flex:none; padding:6px 14px;">Today</button>
+        <div class="cal-week-label">${weekLabel}</div>
+        <button type="button" class="cal-nav-btn" data-action="cal-next" aria-label="Next week">›</button>
+      </div>
+      <div class="cal-wrap"><div class="cal-grid">${headHtml}${bodyHtml}</div></div>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-swatch booked"></span>Booked</div>
+        <div class="legend-item"><span class="legend-swatch open"></span>Open — click to schedule</div>
+      </div>
+    `;
+
+    attachCalendarListeners();
+  }
+
+  function attachCalendarListeners() {
+    calendarView.querySelector('[data-action="cal-prev"]').addEventListener('click', () => {
+      calendarWeekStart.setDate(calendarWeekStart.getDate() - 7);
+      render();
+    });
+    calendarView.querySelector('[data-action="cal-next"]').addEventListener('click', () => {
+      calendarWeekStart.setDate(calendarWeekStart.getDate() + 7);
+      render();
+    });
+    calendarView.querySelector('[data-action="cal-today"]').addEventListener('click', () => {
+      calendarWeekStart = startOfWeek(new Date());
+      render();
+    });
+    calendarView.querySelectorAll('[data-action="cal-open-appt"]').forEach(el => {
+      el.addEventListener('click', () => {
+        const apptId = el.dataset.id;
+        setView('schedule');
+        const row = scheduleView.querySelector(`[data-appt-id="${apptId}"]`);
+        if (row) {
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          row.classList.add('appt-highlight');
+          setTimeout(() => row.classList.remove('appt-highlight'), 1600);
+        }
+      });
+    });
+    calendarView.querySelectorAll('[data-action="cal-open-slot"]').forEach(el => {
+      el.addEventListener('click', () => {
+        calPendingSlot = { date: el.dataset.date, time: el.dataset.time };
+        openCalClientPicker();
+      });
+    });
+  }
+
+  function openCalClientPicker() {
+    const slotDate = new Date(`${calPendingSlot.date}T${calPendingSlot.time}`);
+    document.getElementById('calPickTimeLabel').textContent = isNaN(slotDate.getTime())
+      ? ''
+      : slotDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+        + ' · ' + slotDate.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+    const calClientList = document.getElementById('calClientList');
+    if (clients.length === 0) {
+      calClientList.innerHTML = `<div class="next-session" style="color:#8b93a1;">No clients yet — add one from the Clients tab first.</div>`;
+    } else {
+      calClientList.innerHTML = clients.map(c => `
+        <button type="button" class="btn btn-schedule" style="justify-content:space-between; flex:none;" data-action="cal-pick-client" data-id="${c.id}">
+          <span>${escapeHtml(c.name)}</span>
+          <span style="font-family:'JetBrains Mono',monospace; font-size:12px;">${c.sessions} left</span>
+        </button>
+      `).join('');
+      calClientList.querySelectorAll('[data-action="cal-pick-client"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const clientId = btn.dataset.id;
+          const c = clients.find(cl => cl.id === clientId);
+          if (c && c.sessions <= 0) {
+            alert(`${c.name} has no sessions remaining. Add sessions before scheduling one.`);
+            return;
+          }
+          document.getElementById('calPickClientOverlay').classList.add('hidden');
+          openScheduleId = clientId;
+          setView('clients');
+          const dateInput = document.getElementById(`sched-date-${clientId}`);
+          const timeInput = document.getElementById(`sched-time-${clientId}`);
+          if (dateInput && calPendingSlot) dateInput.value = calPendingSlot.date;
+          if (timeInput && calPendingSlot) timeInput.value = calPendingSlot.time;
+          bindLocationAutocomplete(document.getElementById(`sched-location-${clientId}`));
+          calPendingSlot = null;
+        });
+      });
+    }
+    document.getElementById('calPickClientOverlay').classList.remove('hidden');
+  }
+
+  document.getElementById('closeCalPickBtn').addEventListener('click', () => {
+    document.getElementById('calPickClientOverlay').classList.add('hidden');
+    calPendingSlot = null;
+  });
+  document.getElementById('calPickClientOverlay').addEventListener('click', (e) => {
+    const overlayEl = document.getElementById('calPickClientOverlay');
+    if (e.target === overlayEl) {
+      overlayEl.classList.add('hidden');
+      calPendingSlot = null;
+    }
+  });
 
   function cardHtml(c) {
     const empty = c.sessions === 0;
