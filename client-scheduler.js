@@ -35,27 +35,59 @@
 
   // ---- Google Places autocomplete for the session location field ----
   // Paste your Google Maps API key here (see the setup guide) to turn on
-  // address autocomplete. Leave blank and the Location field still works
+  // address suggestions. Leave blank and the Location field still works
   // as a plain text input — it just won't suggest addresses as you type.
+  // Calls the Places API (New) Autocomplete REST endpoint directly (no
+  // separate Maps JS SDK to load) — requires "Places API (New)" enabled
+  // on the Google Cloud project this key belongs to.
   const GOOGLE_MAPS_API_KEY = 'AIzaSyCpFoMSHMFdFClcIW_kkUKz30BEZgDQDVk';
 
-  if (GOOGLE_MAPS_API_KEY) {
-    const mapsScript = document.createElement('script');
-    mapsScript.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_MAPS_API_KEY) + '&libraries=places';
-    mapsScript.async = true;
-    document.head.appendChild(mapsScript);
+  let locationSuggestDebounce = null;
+
+  // No-op (leaves a plain text input) if no key is configured.
+  function bindLocationAutocomplete(inputEl) {
+    if (!inputEl || !GOOGLE_MAPS_API_KEY) return;
+    let list = inputEl.nextElementSibling;
+    if (!list || !list.classList.contains('location-suggestions')) {
+      list = document.createElement('div');
+      list.className = 'location-suggestions';
+      inputEl.insertAdjacentElement('afterend', list);
+    }
+    inputEl.addEventListener('input', () => {
+      clearTimeout(locationSuggestDebounce);
+      const query = inputEl.value.trim();
+      if (!query) { list.innerHTML = ''; list.style.display = 'none'; return; }
+      locationSuggestDebounce = setTimeout(() => fetchLocationSuggestions(query, inputEl, list), 300);
+    });
+    inputEl.addEventListener('blur', () => {
+      // Let a click on a suggestion register before hiding the list.
+      setTimeout(() => { list.style.display = 'none'; }, 150);
+    });
   }
 
-  // No-op (leaves a plain text input) if the Maps script isn't loaded —
-  // either because GOOGLE_MAPS_API_KEY is blank, or it hasn't finished
-  // loading yet.
-  function bindLocationAutocomplete(inputEl) {
-    if (!inputEl || !window.google || !window.google.maps || !window.google.maps.places) return;
-    try {
-      new google.maps.places.Autocomplete(inputEl, { fields: ['formatted_address'] });
-    } catch (e) {
-      console.error('Could not initialize location autocomplete:', e);
-    }
+  function fetchLocationSuggestions(query, inputEl, list) {
+    fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY },
+      body: JSON.stringify({ input: query }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        const suggestions = (data.suggestions || []).slice(0, 5)
+          .map(s => s.placePrediction && s.placePrediction.text && s.placePrediction.text.text)
+          .filter(Boolean);
+        if (!suggestions.length) { list.innerHTML = ''; list.style.display = 'none'; return; }
+        list.innerHTML = suggestions.map(text => `<div class="location-suggestion">${escapeHtml(text)}</div>`).join('');
+        list.style.display = 'block';
+        list.querySelectorAll('.location-suggestion').forEach((el, i) => {
+          el.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            inputEl.value = suggestions[i];
+            list.style.display = 'none';
+          });
+        });
+      })
+      .catch(err => console.error('Location suggestions failed:', err));
   }
 
   function loadClientsLocal() {
@@ -648,7 +680,7 @@
             <input type="date" id="sched-date-${c.id}" required style="width:auto; flex:1;" />
             <input type="time" id="sched-time-${c.id}" required style="width:auto; flex:1;" />
           </div>
-          <div class="reset-inputs">
+          <div class="reset-inputs" style="position:relative;">
             <input type="text" id="sched-location-${c.id}" placeholder="Location (optional)" autocomplete="off" style="width:auto; flex:1;" />
           </div>
           <div class="reset-inputs">

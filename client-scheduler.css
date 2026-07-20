@@ -353,6 +353,28 @@
     font-size: 13px;
   }
   .reset-inputs input:focus { outline: 2px solid #D6402D; outline-offset: 1px; }
+
+  .location-suggestions {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: #1b202a;
+    border: 1px solid #2a303b;
+    border-radius: 8px;
+    margin-top: 4px;
+    overflow: hidden;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  }
+  .location-suggestion {
+    padding: 9px 12px;
+    font-size: 13px;
+    color: #EDEBE4;
+    cursor: pointer;
+  }
+  .location-suggestion:hover { background: #232a35; }
   .btn-confirm { background: #D6402D; color: #14181F; border: none; flex: 1; }
   .btn-confirm:hover { background: #E2523E; }
   .btn-cancel { background: transparent; }
