@@ -234,7 +234,7 @@
       badge.textContent = 'Sync failed · check backend URL';
       badge.style.color = '#D6402D';
     } else {
-      badge.textContent = 'Synced to Google Sheet';
+      badge.textContent = 'Synced';
       badge.style.color = '#7ac298';
     }
   }
@@ -473,7 +473,7 @@
         const conflict = findConflict(newDatetime, appt.clientId);
         if (conflict) {
           const conflictClient = clients.find(cl => cl.id === conflict.clientId);
-          alert(`${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Pick a different time.`);
+          showInfoModal('Scheduling conflict', `${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Pick a different time.`);
           return;
         }
 
@@ -548,23 +548,36 @@
       { label: 'Completed', count: inRange.filter(a => a.completed).length, color: '#7ac298' },
       { label: 'Cancelled', count: inRange.filter(a => a.cancelled).length, color: '#E2857A' },
     ];
-    const maxCount = Math.max(bars[0].count, bars[1].count, bars[2].count, 1);
+    const total = bars[0].count + bars[1].count + bars[2].count;
 
-    const chartHeight = 140;
-    const barWidth = 64;
-    const gap = 40;
-    const svgWidth = bars.length * barWidth + (bars.length + 1) * gap;
+    const cx = 100, cy = 100, r = 90;
+    let pieHtml;
+    if (total === 0) {
+      pieHtml = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#2a303b" stroke-width="3"></circle>`;
+    } else {
+      let angle = -90;
+      pieHtml = bars.map(b => {
+        if (b.count === 0) return '';
+        const slice = (b.count / total) * 360;
+        const startRad = (angle * Math.PI) / 180;
+        const endRad = ((angle + slice) * Math.PI) / 180;
+        const x1 = cx + r * Math.cos(startRad);
+        const y1 = cy + r * Math.sin(startRad);
+        const x2 = cx + r * Math.cos(endRad);
+        const y2 = cy + r * Math.sin(endRad);
+        const largeArc = slice > 180 ? 1 : 0;
+        const path = `<path d="M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${largeArc} 1 ${x2.toFixed(2)},${y2.toFixed(2)} Z" fill="${b.color}" stroke="#1b202a" stroke-width="2"></path>`;
+        angle += slice;
+        return path;
+      }).join('');
+    }
 
-    const barsHtml = bars.map((b, i) => {
-      const x = gap + i * (barWidth + gap);
-      const h = Math.max(Math.round((b.count / maxCount) * chartHeight), b.count > 0 ? 2 : 0);
-      const y = chartHeight - h;
-      return `
-        <text x="${x + barWidth / 2}" y="${y - 10}" text-anchor="middle" fill="#F5F3EE" font-family="'JetBrains Mono', monospace" font-size="16" font-weight="700">${b.count}</text>
-        <rect x="${x}" y="${y}" width="${barWidth}" height="${h}" rx="6" fill="${b.color}"></rect>
-        <text x="${x + barWidth / 2}" y="${chartHeight + 22}" text-anchor="middle" fill="#8b93a1" font-family="'Inter', sans-serif" font-size="12">${b.label}</text>
-      `;
-    }).join('');
+    const breakdownHtml = bars.map(b => `
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:13px;">
+        <span style="display:flex; align-items:center; gap:7px; color:#8b93a1;"><span style="width:9px; height:9px; border-radius:50%; background:${b.color}; display:inline-block;"></span>${b.label}</span>
+        <span style="font-family:'JetBrains Mono', monospace; color:#F5F3EE;">${b.count}</span>
+      </div>
+    `).join('');
 
     const periods = [['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['year', 'Year']];
     const toggleHtml = periods.map(([key, label]) => `
@@ -581,9 +594,13 @@
             <button type="button" class="cal-nav-btn" data-action="stats-next" aria-label="Next period">›</button>
           </div>
         </div>
-        <svg viewBox="0 0 ${svgWidth} ${chartHeight + 40}" style="width:100%; max-width:420px; display:block; margin:0 auto;">
-          ${barsHtml}
-        </svg>
+        <div style="height:1px; background:#2a303b; margin-bottom:18px;"></div>
+        <div style="display:flex; align-items:center; gap:18px;">
+          <svg viewBox="0 0 200 200" style="width:84px; flex:none;">${pieHtml}</svg>
+          <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
+            ${breakdownHtml}
+          </div>
+        </div>
       </div>
     `;
   }
@@ -1009,10 +1026,10 @@
             <input type="time" id="sched-time-${c.id}" required style="width:auto; flex:1;" />
           </div>
           <div class="reset-inputs" style="position:relative;">
-            <input type="text" id="sched-location-${c.id}" placeholder="Location (optional)" autocomplete="off" style="width:auto; flex:1;" />
+            <input type="text" id="sched-location-${c.id}" placeholder="Location" autocomplete="off" required style="width:auto; flex:1;" />
           </div>
           <div class="reset-inputs">
-            <input type="text" id="sched-notes-${c.id}" placeholder="Notes (optional)" style="width:auto; flex:1;" />
+            <input type="text" id="sched-notes-${c.id}" placeholder="Description (e.g. Chest session, Cardio)" required style="width:auto; flex:1;" />
           </div>
           <div class="reset-inputs">
             <button type="submit" class="btn btn-confirm">Schedule</button>
@@ -1116,7 +1133,7 @@
         const timeVal = document.getElementById(`sched-time-${id}`).value;
         const locationVal = document.getElementById(`sched-location-${id}`).value.trim();
         const notesVal = document.getElementById(`sched-notes-${id}`).value.trim();
-        if (!dateVal || !timeVal) return;
+        if (!dateVal || !timeVal || !locationVal || !notesVal) return;
 
         const c = clients.find(cl => cl.id === id);
         if (c && c.sessions <= 0) {
@@ -1129,7 +1146,7 @@
         const conflict = findConflict(datetime, id);
         if (conflict) {
           const conflictClient = clients.find(cl => cl.id === conflict.clientId);
-          alert(`${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Pick a different time.`);
+          showInfoModal('Scheduling conflict', `${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Pick a different time.`);
           return;
         }
 
@@ -1150,8 +1167,33 @@
         if (c && c.email) {
           sendSessionNotification(c, datetime, notesVal, 'booking', locationVal);
         }
+
+        if (c) showBookingConfirm(c, datetime);
       });
     });
+  }
+
+  // Reusable modal for one-off messages (booking confirmations, scheduling
+  // conflict warnings, etc.) — same chrome as the profile/add-client modals,
+  // just with a title + message instead of a form.
+  const infoModalOverlay = document.getElementById('infoModalOverlay');
+  function showInfoModal(title, message) {
+    document.getElementById('infoModalTitle').textContent = title;
+    document.getElementById('infoModalMessage').textContent = message;
+    infoModalOverlay.classList.remove('hidden');
+  }
+  document.getElementById('closeInfoModalBtn').addEventListener('click', () => {
+    infoModalOverlay.classList.add('hidden');
+  });
+  document.getElementById('infoModalOkBtn').addEventListener('click', () => {
+    infoModalOverlay.classList.add('hidden');
+  });
+  infoModalOverlay.addEventListener('click', (e) => {
+    if (e.target === infoModalOverlay) infoModalOverlay.classList.add('hidden');
+  });
+
+  function showBookingConfirm(client, datetimeIso) {
+    showInfoModal('Session booked', `Your session with ${client.name} is booked for ${formatDateTime(datetimeIso)}. You can view it in the Schedule tab.`);
   }
 
   // Two bookings are treated as conflicting if they fall within one
