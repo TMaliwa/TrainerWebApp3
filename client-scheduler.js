@@ -470,7 +470,7 @@
 
         const newDatetime = new Date(`${dateVal}T${timeVal}`).toISOString();
 
-        const conflict = findConflict(newDatetime, appt.clientId);
+        const conflict = findConflict(newDatetime, appt.id);
         if (conflict) {
           const conflictClient = clients.find(cl => cl.id === conflict.clientId);
           showInfoModal('Scheduling conflict', `${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Pick a different time.`);
@@ -1143,7 +1143,7 @@
 
         const datetime = new Date(`${dateVal}T${timeVal}`).toISOString();
 
-        const conflict = findConflict(datetime, id);
+        const conflict = findConflict(datetime, null);
         if (conflict) {
           const conflictClient = clients.find(cl => cl.id === conflict.clientId);
           showInfoModal('Scheduling conflict', `${conflictClient ? conflictClient.name : 'Another client'} already has a session around ${formatDateTime(conflict.datetime)}. Pick a different time.`);
@@ -1197,13 +1197,16 @@
   }
 
   // Two bookings are treated as conflicting if they fall within one
-  // session length of each other for two different clients.
+  // session length of each other, regardless of which client they're for
+  // (a trainer can't run two sessions — even with the same client — at
+  // once). `excludeAppointmentId` skips the appointment being rescheduled
+  // so postponing a session doesn't conflict with itself.
   const SESSION_DURATION_MINUTES = 60;
-  function findConflict(datetimeIso, excludeClientId) {
+  function findConflict(datetimeIso, excludeAppointmentId) {
     const target = new Date(datetimeIso).getTime();
     return appointments.find(a => {
       if (a.completed || a.cancelled) return false;
-      if (a.clientId === excludeClientId) return false;
+      if (a.id === excludeAppointmentId) return false;
       const t = new Date(a.datetime).getTime();
       return Math.abs(t - target) < SESSION_DURATION_MINUTES * 60000;
     }) || null;
