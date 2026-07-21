@@ -11,7 +11,77 @@
 </head>
 <body>
 
-<div class="panel">
+<div class="bg-scene" aria-hidden="true">
+  <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
+    <g stroke="#8b93a1" stroke-width="1.5" fill="none" opacity="0.05">
+      <circle cx="800" cy="460" r="230" />
+      <circle cx="800" cy="460" r="160" />
+      <circle cx="800" cy="460" r="90" />
+    </g>
+    <g transform="translate(130,130) scale(0.9)" opacity="0.08">
+      <circle cx="0" cy="6" r="42" fill="none" stroke="#EDEBE4" stroke-width="7" />
+      <rect x="-10" y="-46" width="20" height="14" rx="4" fill="#EDEBE4" />
+      <line x1="0" y1="6" x2="0" y2="-16" stroke="#EDEBE4" stroke-width="6" stroke-linecap="round" />
+      <line x1="0" y1="6" x2="18" y2="6" stroke="#EDEBE4" stroke-width="6" stroke-linecap="round" />
+    </g>
+    <g transform="translate(1290,190) rotate(-24)" fill="#D6402D" opacity="0.16">
+      <rect x="-150" y="-11" width="300" height="22" rx="11" />
+      <rect x="-190" y="-52" width="46" height="104" rx="14" />
+      <rect x="144" y="-52" width="46" height="104" rx="14" />
+      <rect x="-208" y="-33" width="18" height="66" rx="8" />
+      <rect x="190" y="-33" width="18" height="66" rx="8" />
+    </g>
+    <g transform="translate(190,760) rotate(18) scale(0.72)" fill="#8b93a1" opacity="0.10">
+      <rect x="-150" y="-11" width="300" height="22" rx="11" />
+      <rect x="-190" y="-52" width="46" height="104" rx="14" />
+      <rect x="144" y="-52" width="46" height="104" rx="14" />
+      <rect x="-208" y="-33" width="18" height="66" rx="8" />
+      <rect x="190" y="-33" width="18" height="66" rx="8" />
+    </g>
+    <g transform="translate(1480,810) rotate(-10) scale(0.5)" fill="#D6402D" opacity="0.08">
+      <rect x="-150" y="-11" width="300" height="22" rx="11" />
+      <rect x="-190" y="-52" width="46" height="104" rx="14" />
+      <rect x="144" y="-52" width="46" height="104" rx="14" />
+      <rect x="-208" y="-33" width="18" height="66" rx="8" />
+      <rect x="190" y="-33" width="18" height="66" rx="8" />
+    </g>
+    <g transform="translate(1370,640) scale(0.55)" opacity="0.09">
+      <circle cx="0" cy="14" r="46" fill="#EDEBE4" />
+      <path d="M-18,-24 a18,20 0 0 1 36,0" stroke="#EDEBE4" stroke-width="12" fill="none" stroke-linecap="round" />
+    </g>
+    <g stroke="#D6402D" stroke-width="3" stroke-linecap="round" opacity="0.12">
+      <line x1="1040" y1="260" x2="1150" y2="228" />
+      <line x1="1020" y1="300" x2="1110" y2="272" />
+      <line x1="1000" y1="340" x2="1070" y2="318" />
+    </g>
+    <g stroke="#8b93a1" stroke-width="3" stroke-linecap="round" opacity="0.09">
+      <line x1="360" y1="700" x2="470" y2="732" />
+      <line x1="380" y1="740" x2="470" y2="768" />
+      <line x1="400" y1="780" x2="460" y2="800" />
+    </g>
+  </svg>
+</div>
+
+<div class="layout">
+
+  <div class="pitch">
+    <div class="pitch-eyebrow">For personal trainers</div>
+    <h2 class="pitch-title">Run your sessions,<br />not a spreadsheet.</h2>
+    <p class="pitch-desc">
+      Most trainers track clients across notebooks, texts, and memory,
+      which is how sessions get double-booked and packages lose count.
+      Session Book keeps every client, package, and booking in one place,
+      and takes the busywork off your plate.
+    </p>
+    <ul class="pitch-features">
+      <li><span class="pitch-dot"></span>Session packages tracked automatically, per client</li>
+      <li><span class="pitch-dot"></span>Booking conflicts blocked before they happen</li>
+      <li><span class="pitch-dot"></span>Branded confirmation emails sent to clients for you</li>
+      <li><span class="pitch-dot"></span>Calendar of booked &amp; open slots, plus exportable history</li>
+    </ul>
+  </div>
+
+  <div class="panel">
   <div class="brand">
     <div class="brand-icon">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5 17.5 17.5"/><path d="m21 21-1-1"/><path d="m3 3 1 1"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
@@ -111,6 +181,8 @@
   </div>
 
   <div class="status" id="statusMsg"></div>
+  </div>
+
 </div>
 
 <script src="login.js"></script>
